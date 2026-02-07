@@ -1,0 +1,32 @@
+---
+services:
+  MessengerNicknameSyncer:
+    build: .
+    container_name: MessengerNicknameSyncer
+    restart: unless-stopped
+    # Can override values in appsettings.json with environment variables here!
+    environment:
+      - Discord__BotToken=${DISCORD_BOT_TOKEN}
+      #- Discord__NicknameSyncChannelId=${NICKNAME_SYNC_CHANNEL_ID}
+      ## Mapping Management Authorization
+      # - Discord__Authorization__MappingManagement__AllowedRoleIds__0=${MAPPING_ROLE_1}
+      # - Discord__Authorization__MappingManagement__AllowedUserIds__0=${MAPPING_USER_1}
+      ## Channel Rename Authorization
+      # - Discord__Authorization__ChannelRename__AllowedRoleIds__0=${RENAME_ROLE_1}
+      # - Discord__Authorization__ChannelRename__AllowedRoleIds__1=${RENAME_ROLE_2}
+      ## Info Commands Authorization
+      # - Discord__Authorization__InfoCommands__AllowEveryone=true
+      ## Auto Rename Channels
+      # - Discord__AutoRenameChannels__Enabled=true
+      # - Discord__AutoRenameChannels__ChannelIds__0=${AUTO_RENAME_CHANNEL_1}
+      # - Discord__AutoRenameChannels__ChannelIds__1=${AUTO_RENAME_CHANNEL_2}
+      # - Discord__AutoRenameChannels__RequireAuthorization=true
+    volumes:
+    # !Replace these with real paths, for your setup!
+      - /path/to/your/appsettings.json:/app/appsettings.json:ro
+      - /path/to/your/user_mappings.json:/app/user_mappings.json
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

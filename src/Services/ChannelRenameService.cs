@@ -1,16 +1,19 @@
-﻿using Discord.WebSocket;
+﻿using System.Text.RegularExpressions;
+using Discord.WebSocket;
+using MessengerNicknameSyncer.Models;
 using Microsoft.Extensions.Configuration;
-using System.Text.RegularExpressions;
 
-public class ChannelRenameService
+namespace MessengerNicknameSyncer.Services;
+
+public partial class ChannelRenameService
 {
 	private readonly HashSet<ulong> _autoRenameChannelIds;
 	private readonly bool _enabled;
 	private readonly bool _requireAuthorization;
 	private readonly AuthorizationService? _authService;
 
-	private static readonly Regex _renamePattern =
-		new(@"^(.+?) named the group (.+?)\.$", RegexOptions.Compiled);
+	private static readonly Regex RenamePattern =
+        RenameRegex();
 
 	public ChannelRenameService(
 		IConfiguration configuration,
@@ -18,10 +21,9 @@ public class ChannelRenameService
 	{
 		_authService = authService;
 
-		_enabled = configuration.GetValue<bool>("Discord:AutoRenameChannels:Enabled", false);
-		_requireAuthorization = configuration.GetValue<bool>(
+		_enabled = configuration.GetValue("Discord:AutoRenameChannels:Enabled", false);
+		_requireAuthorization = configuration.GetValue(
 			"Discord:AutoRenameChannels:RequireAuthorization", false);
-
 
 		IConfigurationSection section = configuration.GetSection("Discord:AutoRenameChannels");
 		_autoRenameChannelIds = Utils.ParseUlongArray(
@@ -42,9 +44,9 @@ public class ChannelRenameService
 		return _enabled && _autoRenameChannelIds.Contains(channelId);
 	}
 
-	public static (bool IsMatch, string? FirstName, string? NewName) ParseRenameMessage(string content)
+	public (bool IsMatch, string? FirstName, string? NewName) ParseRenameMessage(string content)
 	{
-		Match match = _renamePattern.Match(content);
+		Match match = RenamePattern.Match(content);
 		if (!match.Success)
 			return (false, null, null);
 
@@ -65,7 +67,7 @@ public class ChannelRenameService
 		return _authService.IsAuthorized(message, PermissionAction.ChannelRename);
 	}
 
-	public static async Task<bool> TryRenameChannelAsync(
+	public async Task<bool> TryRenameChannelAsync(
 		SocketTextChannel channel,
 		string newName,
 		string triggeredBy)
@@ -106,4 +108,7 @@ public class ChannelRenameService
 
 		return sanitized;
 	}
+
+    [GeneratedRegex(@"^(.+?) named the group (.+?)\.$", RegexOptions.Compiled)]
+    private static partial Regex RenameRegex();
 }

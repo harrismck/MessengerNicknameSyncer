@@ -1,4 +1,6 @@
-﻿internal class ResyncResults
+﻿namespace MessengerNicknameSyncer.Models;
+
+public class ResyncResults
 {
 	public int Success { get; set; }
 	public int NotMapped { get; set; }

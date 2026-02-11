@@ -7,11 +7,11 @@ namespace MessengerNicknameSyncer.Services;
 public class CommandHandler
 {
 	private const string ResyncCommand = "!resync";
-	private const string ReloadCommand = "!reloadMappings";
-	private const string HelpCommand = "!nicknameHelp";
+	private const string ReloadCommand = "!reloadmappings";
+	private const string HelpCommand = "!nicknamehelp";
 	private const string MapCommand = "!map";
 	private const string UnmapCommand = "!unmap";
-	private const string ListMapsCommand = "!listMaps";
+	private const string ListMapsCommand = "!listmaps";
 
 	private UserMappingService _mappingService;
 	private readonly AuthorizationService _authService;
@@ -282,13 +282,27 @@ public class CommandHandler
 			if (resetToFirstName)
 			{
 				Dictionary<string, ulong> allMappings = _mappingService.GetAllMappings();
-				List<string> unmappedUsers = allMappings.Keys.Except(nicknameChanges.Keys).ToList();
+				var allDiscordUserIds = allMappings.Values.Distinct();
+	
+				// Get Discord user IDs that already have recent nickname changes
+				var userIdsWithChanges = nicknameChanges.Keys
+					.Select(fbName => _mappingService.GetDiscordUserId(fbName))
+					.Where(id => id.HasValue)
+					.Select(id => id.Value)
+					.ToHashSet();
 
-				foreach (string? facebookName in unmappedUsers)
+				foreach (ulong discordUserId in allDiscordUserIds)
 				{
-					string firstName = NicknameMessageParser.ExtractFirstName(facebookName);
-					nicknameChanges[facebookName] = firstName;
-					Console.WriteLine($"No recent change for '{facebookName}', will reset to: {firstName}");
+					if (userIdsWithChanges.Contains(discordUserId))
+						continue;
+					// Get the preferred Facebook name for this user
+					string? preferredFacebookName = _mappingService.GetPreferredFacebookName(discordUserId);
+					if (preferredFacebookName == null)
+						continue;
+					
+					string firstName = NicknameMessageParser.ExtractFirstName(preferredFacebookName);
+					nicknameChanges[preferredFacebookName] = firstName;
+					Console.WriteLine($"No recent change for Discord user {discordUserId}, will reset to: {firstName}");
 				}
 			}
 

@@ -143,6 +143,43 @@ public class UserMappingService
 			return new Dictionary<string, ulong>(_mappings.Mappings);
 		}
 	}
+	
+	public string? GetPreferredFacebookName(ulong discordUserId)
+	{
+		lock (_lockObj)
+		{
+			// Find all Facebook names that map to this Discord user
+			List<string> matchingNames = _mappings.Mappings
+				.Where(m => m.Value == discordUserId)
+				.Select(m => m.Key)
+				.ToList();
+
+			if (matchingNames.Count == 0)
+				return null;
+
+			if (matchingNames.Count == 1)
+				return matchingNames[0];
+
+			// Multiple names - prefer the "real" name over special keywords
+			// Special keywords to deprioritize: "your"
+			var specialKeywords = new[] { "your" };
+
+			List<string> realNames = matchingNames
+				.Where(name => !specialKeywords.Contains(name, StringComparer.OrdinalIgnoreCase))
+				.ToList();
+
+			if (realNames.Count > 0)
+			{
+				// Prefer the longest name (likely most complete)
+				string preferredName = realNames.OrderByDescending(n => n.Length).First();
+				Console.WriteLine($"ℹ️ User {discordUserId} has multiple mappings, preferring '{preferredName}' over {string.Join(", ", matchingNames.Where(n => n != preferredName).Select(n => $"'{n}'"))}");
+				return preferredName;
+			}
+
+			// Fallback to first special keyword if that's all we have
+			return matchingNames[0];
+		}
+	}
 }
 
 public class UserMappings

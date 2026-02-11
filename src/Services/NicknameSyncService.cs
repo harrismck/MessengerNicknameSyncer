@@ -91,9 +91,17 @@ public class NicknameSyncService
 			return;
 		}
 
-		string? newNickname = _nicknameClearBehavior == NicknameClearBehavior.ClearCompletely
-			? null
-			: NicknameMessageParser.ExtractFirstName(targetName);
+		string? newNickname;
+		if (_nicknameClearBehavior == NicknameClearBehavior.ClearCompletely)
+		{
+			newNickname = null;
+		}
+		else // NicknameClearBehavior.ResetToFirstName
+		{
+			// Get the preferred Facebook name for this user (handles "your" vs real name)
+			string? preferredFacebookName = _mappingService.GetPreferredFacebookName(discordUserId.Value);
+			newNickname = NicknameMessageParser.ExtractFirstName(preferredFacebookName ?? targetName);
+		}
 
 		await TryApplyNicknameAsync(member, newNickname, message);
 	}
@@ -194,9 +202,20 @@ public class NicknameSyncService
 
 					if (targetName != null)
 					{
-						newNickname = _nicknameClearBehavior == NicknameClearBehavior.ClearCompletely
-							? null
-							: NicknameMessageParser.ExtractFirstName(targetName);
+						ulong? tempDiscordUserId = _mappingService.GetDiscordUserId(targetName);
+						if (tempDiscordUserId != null)
+						{
+							if (_nicknameClearBehavior == NicknameClearBehavior.ClearCompletely)
+							{
+								newNickname = null;
+							}
+							else
+							{
+								// Get preferred Facebook name for first name extraction
+								string? preferredFacebookName = _mappingService.GetPreferredFacebookName(tempDiscordUserId.Value);
+								newNickname = NicknameMessageParser.ExtractFirstName(preferredFacebookName ?? targetName);
+							}
+						}
 					}
 				}
 				else
@@ -213,16 +232,28 @@ public class NicknameSyncService
 				if (targetName != null)
 				{
 					ulong? discordUserId = _mappingService.GetDiscordUserId(targetName);
-					
+	
 					if (discordUserId != null)
 					{
-						// Only keep the most recent (first encountered) nickname for each Discord user
-						if (!nicknameChangesByUserId.ContainsKey(discordUserId.Value))
+						// Keep the message with the latest (most recent) timestamp
+						if (!nicknameChangesByUserId.ContainsKey(discordUserId.Value) ||
+						    msg.Timestamp > nicknameChangesByUserId[discordUserId.Value].Timestamp)
 						{
 							nicknameChangesByUserId[discordUserId.Value] = (targetName, newNickname, msg.Timestamp);
 							string displayNickname = newNickname ?? "(cleared)";
 							Console.WriteLine($"Found: '{targetName}' -> '{displayNickname}' from {msg.Timestamp}");
 						}
+						else
+						{
+							// Log when we skip an older message for the same user
+							string displayNickname = newNickname ?? "(cleared)";
+							Console.WriteLine($"Skipping older: '{targetName}' -> '{displayNickname}' from {msg.Timestamp}");
+						}
+					}
+					else
+					{
+						// Log when Discord ID lookup fails
+						Console.WriteLine($"⚠️ Could not resolve '{targetName}' to Discord user");
 					}
 				}
 			}
@@ -263,7 +294,7 @@ public class NicknameSyncService
 			if (member == null)
 			{
 				Console.WriteLine($"⚠️ User ID {discordUserId} not found in guild");
-				results.Errors++;
+				results.NotMapped++;
 				continue;
 			}
 

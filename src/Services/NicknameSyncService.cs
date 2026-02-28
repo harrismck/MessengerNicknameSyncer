@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Discord;
 using Discord.WebSocket;
 using MessengerNicknameSyncer.Models;
+using Serilog;
 
 namespace MessengerNicknameSyncer.Services;
 
@@ -21,7 +22,7 @@ public class NicknameSyncService
 		string targetName = NicknameMessageParser.ExtractTargetNameFromSetMatch(match);
 		string newNickname = NicknameMessageParser.ExtractNewNicknameFromSetMatch(match);
 
-		Console.WriteLine($"Nickname change detected: '{targetName}' -> '{newNickname}'");
+		Log.Information("Nickname change detected: '{TargetName}' -> '{NewNickname}'", targetName, newNickname);
 
 		if (message.Channel is not SocketGuildChannel guildChannel)
 			return;
@@ -31,8 +32,7 @@ public class NicknameSyncService
 
 		if (discordUserId == null)
 		{
-			Console.WriteLine($"❌ No mapping found for Facebook name: '{targetName}'");
-			Console.WriteLine($"   Please add a mapping in user_mappings.json");
+			Log.Warning("No mapping found for Facebook name: '{TargetName}'", targetName);
 			await message.AddReactionAsync(new Emoji("❓"));
 			return;
 		}
@@ -41,7 +41,7 @@ public class NicknameSyncService
 
 		if (member == null)
 		{
-			Console.WriteLine($"❌ Discord user ID {discordUserId} not found in guild");
+			Log.Warning("Discord user ID {DiscordUserId} not found in guild", discordUserId);
 			await message.AddReactionAsync(new Emoji("❌"));
 			return;
 		}
@@ -54,7 +54,7 @@ public class NicknameSyncService
 		// If configured to do nothing, just ignore clear messages
 		if (_nicknameClearBehavior == NicknameClearBehavior.DoNothing)
 		{
-			Console.WriteLine("ℹ️ Nickname clear ignored (behavior set to DoNothing)");
+			Log.Information("Nickname clear ignored (behavior set to DoNothing)");
 			return;
 		}
 
@@ -62,12 +62,12 @@ public class NicknameSyncService
 
 		if (targetName == null)
 		{
-			Console.WriteLine("⚠️ Cannot determine target for 'You cleared your own nickname'");
+			Log.Warning("Cannot determine target for 'You cleared your own nickname'");
 			await message.AddReactionAsync(new Emoji("❓"));
 			return;
 		}
 
-		Console.WriteLine($"Nickname clear detected for: '{targetName}'");
+		Log.Information("Nickname clear detected for: '{TargetName}'", targetName);
 
 		if (message.Channel is not SocketGuildChannel guildChannel)
 			return;
@@ -77,7 +77,7 @@ public class NicknameSyncService
 
 		if (discordUserId == null)
 		{
-			Console.WriteLine($"❌ No mapping found for Facebook name: '{targetName}'");
+			Log.Warning("No mapping found for Facebook name: '{TargetName}'", targetName);
 			await message.AddReactionAsync(new Emoji("❓"));
 			return;
 		}
@@ -86,7 +86,7 @@ public class NicknameSyncService
 
 		if (member == null)
 		{
-			Console.WriteLine($"❌ Discord user ID {discordUserId} not found in guild");
+			Log.Warning("Discord user ID {DiscordUserId} not found in guild", discordUserId);
 			await message.AddReactionAsync(new Emoji("❌"));
 			return;
 		}
@@ -118,13 +118,13 @@ public class NicknameSyncService
 			if (truncatedNickname != null && truncatedNickname.Length > 32)
 			{
 				truncatedNickname = truncatedNickname.Substring(0, 32);
-				Console.WriteLine($"⚠️ Nickname '{newNickname}' truncated to '{truncatedNickname}' (Discord 32 char limit)");
+				Log.Warning("Nickname '{OriginalNickname}' truncated to '{TruncatedNickname}' (Discord 32 char limit)", newNickname, truncatedNickname);
 			}
 
 			await member.ModifyAsync(x => x.Nickname = truncatedNickname);
 
 			string displayNickname = truncatedNickname ?? "(cleared)";
-			Console.WriteLine($"✅ Changed {member.Username}'s nickname to '{displayNickname}'");
+			Log.Information("Changed {Username}'s nickname to '{DisplayNickname}'", member.Username, displayNickname);
 
 			if (triggerMessage != null)
 				await triggerMessage.AddReactionAsync(new Emoji("✅"));
@@ -136,12 +136,12 @@ public class NicknameSyncService
 			// Check if this is the server owner
 			if (member.Guild.OwnerId == member.Id)
 			{
-				Console.WriteLine($"ℹ️ Cannot change server owner's ({member.Username}) nickname - sending DM reminder");
+				Log.Information("Cannot change server owner's ({Username}) nickname - sending DM reminder", member.Username);
 				await SendOwnerNicknameReminderAsync(member, newNickname);
 			}
 			else
 			{
-				Console.WriteLine($"❌ No permission to change {member.Username}'s nickname");
+				Log.Warning("No permission to change {Username}'s nickname", member.Username);
 				if (triggerMessage != null)
 					await triggerMessage.AddReactionAsync(new Emoji("⛔"));
 			}
@@ -150,7 +150,7 @@ public class NicknameSyncService
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"❌ Error changing nickname: {ex.Message}");
+			Log.Error(ex, "Error changing nickname for {Username}", member.Username);
 			if (triggerMessage != null)
 				await triggerMessage.AddReactionAsync(new Emoji("❌"));
 
@@ -241,19 +241,19 @@ public class NicknameSyncService
 						{
 							nicknameChangesByUserId[discordUserId.Value] = (targetName, newNickname, msg.Timestamp);
 							string displayNickname = newNickname ?? "(cleared)";
-							Console.WriteLine($"Found: '{targetName}' -> '{displayNickname}' from {msg.Timestamp}");
+							Log.Debug("Found: '{TargetName}' -> '{DisplayNickname}' from {Timestamp}", targetName, displayNickname, msg.Timestamp);
 						}
 						else
 						{
 							// Log when we skip an older message for the same user
 							string displayNickname = newNickname ?? "(cleared)";
-							Console.WriteLine($"Skipping older: '{targetName}' -> '{displayNickname}' from {msg.Timestamp}");
+							Log.Debug("Skipping older: '{TargetName}' -> '{DisplayNickname}' from {Timestamp}", targetName, displayNickname, msg.Timestamp);
 						}
 					}
 					else
 					{
 						// Log when Discord ID lookup fails
-						Console.WriteLine($"⚠️ Could not resolve '{targetName}' to Discord user");
+						Log.Warning("Could not resolve '{TargetName}' to Discord user", targetName);
 					}
 				}
 			}
@@ -265,7 +265,7 @@ public class NicknameSyncService
 				break;
 		}
 
-		Console.WriteLine($"Processed {messagesProcessed} messages, found {nicknameChangesByUserId.Count} unique users");
+		Log.Information("Processed {MessageCount} messages, found {UniqueUsers} unique users", messagesProcessed, nicknameChangesByUserId.Count);
 
 		return nicknameChangesByUserId.ToDictionary(
 			kvp => kvp.Value.FacebookName,
@@ -284,7 +284,7 @@ public class NicknameSyncService
 
 			if (discordUserId == null)
 			{
-				Console.WriteLine($"⚠️ '{facebookName}' not in mappings, skipping");
+				Log.Warning("'{FacebookName}' not in mappings, skipping", facebookName);
 				results.NotMapped++;
 				continue;
 			}
@@ -293,7 +293,7 @@ public class NicknameSyncService
 
 			if (member == null)
 			{
-				Console.WriteLine($"⚠️ User ID {discordUserId} not found in guild");
+				Log.Warning("User ID {DiscordUserId} not found in guild", discordUserId);
 				results.NotMapped++;
 				continue;
 			}
@@ -343,15 +343,15 @@ public class NicknameSyncService
 			}
 
 			await dmChannel.SendMessageAsync(reminderMessage);
-			Console.WriteLine($"✅ Sent DM reminder to server owner");
+			Log.Information("Sent DM reminder to server owner {Username}", owner.Username);
 		}
 		catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.Forbidden)
 		{
-			Console.WriteLine($"⚠️ Cannot DM server owner - they may have DMs disabled");
+			Log.Warning(ex, "Cannot DM server owner - they may have DMs disabled");
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"⚠️ Error sending DM to server owner: {ex.Message}");
+			Log.Warning(ex, "Error sending DM to server owner");
 		}
 	}
 }

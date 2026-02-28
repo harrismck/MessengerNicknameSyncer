@@ -1,6 +1,7 @@
 using Discord;
 using Discord.WebSocket;
 using MessengerNicknameSyncer.Models;
+using Serilog;
 
 namespace MessengerNicknameSyncer.Services;
 
@@ -51,7 +52,7 @@ public class CommandHandler
 		{
 			if (!_authService.IsAuthorized(message, requiredPermission.Value))
 			{
-				Console.WriteLine($"Unauthorized {requiredPermission.Value} command attempt by {message.Author.Username}");
+				Log.Warning("Unauthorized {Permission} command attempt by {Username}", requiredPermission.Value, message.Author.Username);
 				await message.AddReactionAsync(new Emoji("🔒"));
 				return;
 			}
@@ -90,12 +91,12 @@ public class CommandHandler
 			var newMappingService = new UserMappingService("user_mappings.json");
 			_mappingService = newMappingService;
 			await message.Channel.SendMessageAsync("✅ Mappings reloaded successfully!");
-			Console.WriteLine($"Mappings reloaded by {message.Author.Username}");
+			Log.Information("Mappings reloaded by {Username}", message.Author.Username);
 		}
 		catch (Exception ex)
 		{
 			await message.Channel.SendMessageAsync($"❌ Error reloading mappings: {ex.Message}");
-			Console.WriteLine($"Error reloading mappings: {ex.Message}");
+			Log.Error(ex, "Error reloading mappings");
 		}
 	}
 
@@ -302,7 +303,7 @@ public class CommandHandler
 					
 					string firstName = NicknameMessageParser.ExtractFirstName(preferredFacebookName);
 					nicknameChanges[preferredFacebookName] = firstName;
-					Console.WriteLine($"No recent change for Discord user {discordUserId}, will reset to: {firstName}");
+					Log.Information("No recent change for Discord user {DiscordUserId}, will reset to: {FirstName}", discordUserId, firstName);
 				}
 			}
 
@@ -337,7 +338,7 @@ public class CommandHandler
 		catch (Exception ex)
 		{
 			await message.Channel.SendMessageAsync($"❌ Error during resync: {ex.Message}");
-			Console.WriteLine($"Error during resync: {ex}");
+			Log.Error(ex, "Error during resync");
 		}
 	}
 

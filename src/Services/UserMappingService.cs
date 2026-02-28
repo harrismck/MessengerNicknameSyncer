@@ -96,17 +96,13 @@ public class UserMappingService
 
 		if (matches.Count == 1)
 		{
-			Console.WriteLine($"ℹ️ Matched '{firstName}' to '{matches[0].Key}' by first name");
+			Log.Information("Matched '{FirstName}' to '{MappedName}' by first name", firstName, matches[0].Key);
 			return matches[0].Value;
 		}
 
 		// Multiple matches - log warning
-		Console.WriteLine($"⚠️ Multiple mappings found for first name '{firstName}':");
-		foreach (KeyValuePair<string, ulong> match in matches)
-		{
-			Console.WriteLine($"   - {match.Key}");
-		}
-		Console.WriteLine($"   Using first match: {matches[0].Key}");
+		Log.Warning("Multiple mappings found for first name '{FirstName}', using first match: {FirstMatch}",
+			firstName, matches[0].Key);
         
 		return matches[0].Value;
 	}
@@ -173,7 +169,7 @@ public class UserMappingService
 			{
 				// Prefer the longest name (likely most complete)
 				string preferredName = realNames.OrderByDescending(n => n.Length).First();
-				Console.WriteLine($"ℹ️ User {discordUserId} has multiple mappings, preferring '{preferredName}' over {string.Join(", ", matchingNames.Where(n => n != preferredName).Select(n => $"'{n}'"))}");
+				Log.Information("User {DiscordUserId} has multiple mappings, preferring '{PreferredName}'", discordUserId, preferredName);
 				return preferredName;
 			}
 

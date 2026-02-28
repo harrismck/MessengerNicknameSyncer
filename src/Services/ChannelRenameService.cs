@@ -2,6 +2,7 @@
 using Discord.WebSocket;
 using MessengerNicknameSyncer.Models;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 
 namespace MessengerNicknameSyncer.Services;
 
@@ -32,8 +33,8 @@ public partial class ChannelRenameService
 
 		if (_enabled)
 		{
-			Console.WriteLine($"Auto-rename enabled for {_autoRenameChannelIds.Count} channel(s)");
-			Console.WriteLine($"Authorization required: {_requireAuthorization}");
+			Log.Information("Auto-rename enabled for {ChannelCount} channel(s)", _autoRenameChannelIds.Count);
+			Log.Information("Authorization required: {RequireAuth}", _requireAuthorization);
 		}
 	}
 
@@ -78,17 +79,17 @@ public partial class ChannelRenameService
 
 			if (channel.Name == sanitizedName)
 			{
-				Console.WriteLine($"Channel '{channel.Name}' already has the correct name, skipping");
+				Log.Information("Channel '{ChannelName}' already has the correct name, skipping", channel.Name);
 				return false;
 			}
 
 			await channel.ModifyAsync(x => x.Name = sanitizedName);
-			Console.WriteLine($"✅ Renamed channel to '{sanitizedName}' (triggered by: {triggeredBy})");
+			Log.Information("Renamed channel to '{SanitizedName}' (triggered by: {TriggeredBy})", sanitizedName, triggeredBy);
 			return true;
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"❌ Error renaming channel: {ex.Message}");
+			Log.Error(ex, "Error renaming channel");
 			return false;
 		}
 	}

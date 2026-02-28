@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using MessengerNicknameSyncer.Models;
 using MessengerNicknameSyncer.Services;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 
 namespace MessengerNicknameSyncer;
 
@@ -18,8 +19,23 @@ internal class Program
 
 	private static async Task Main(string[] _)
 	{
-		Program program = new();
-		await program.RunBotAsync();
+		Log.Logger = new LoggerConfiguration()
+			.MinimumLevel.Debug()
+			.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+			.WriteTo.File("logs/bot-.log",
+				rollingInterval: RollingInterval.Day,
+				outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+			.CreateLogger();
+
+		try
+		{
+			Program program = new();
+			await program.RunBotAsync();
+		}
+		finally
+		{
+			await Log.CloseAndFlushAsync();
+		}
 	}
 
 	private Program()
@@ -48,7 +64,7 @@ internal class Program
 
 		if (!Enum.TryParse(clearBehaviorString, true, out NicknameClearBehavior nicknameClearBehavior))
 		{
-			Console.WriteLine($"Invalid NicknameClearBehavior '{clearBehaviorString}', defaulting to ResetToFirstName");
+			Log.Warning("Invalid NicknameClearBehavior '{Value}', defaulting to ResetToFirstName", clearBehaviorString);
 			nicknameClearBehavior = NicknameClearBehavior.ResetToFirstName;
 		}
 
@@ -99,7 +115,15 @@ internal class Program
 
 	private static Task LogAsync(LogMessage log)
 	{
-		Console.WriteLine(log.ToString());
+		switch (log.Severity)
+		{
+			case LogSeverity.Critical: Log.Fatal(log.Exception, "[Discord] {Message}", log.Message); break;
+			case LogSeverity.Error:    Log.Error(log.Exception, "[Discord] {Message}", log.Message); break;
+			case LogSeverity.Warning:  Log.Warning(log.Exception, "[Discord] {Message}", log.Message); break;
+			case LogSeverity.Info:     Log.Information("[Discord] {Message}", log.Message); break;
+			case LogSeverity.Verbose:  Log.Verbose("[Discord] {Message}", log.Message); break;
+			case LogSeverity.Debug:    Log.Debug("[Discord] {Message}", log.Message); break;
+		}
 		return Task.CompletedTask;
 	}
 
@@ -107,21 +131,21 @@ internal class Program
 	{
 		if (_client == null)
 		{
-			Console.WriteLine("Failed to init client");
+			Log.Error("Failed to init client");
 			return;
 		}
 
-		Console.WriteLine($"Connected as {_client.CurrentUser}");
-		Console.WriteLine($"Monitoring channel ID: {_nicknameSyncChannelId}");
+		Log.Information("Connected as {CurrentUser}", _client.CurrentUser);
+		Log.Information("Monitoring channel ID: {ChannelId}", _nicknameSyncChannelId);
 
 		foreach (SocketGuild? guild in _client.Guilds)
 		{
-			Console.WriteLine($"Downloading members for guild: {guild.Name}");
+			Log.Information("Downloading members for guild: {GuildName}", guild.Name);
 			await guild.DownloadUsersAsync();
-			Console.WriteLine($"  Total members: {guild.Users.Count}");
+			Log.Information("  Total members: {MemberCount}", guild.Users.Count);
 		}
 
-		Console.WriteLine("Bot is ready!");
+		Log.Information("Bot is ready!");
 	}
 
 	private async Task MessageReceivedAsync(SocketMessage message)
@@ -154,18 +178,18 @@ internal class Program
 		if (!isMatch || string.IsNullOrEmpty(newName))
 			return;
 
-		Console.WriteLine($"Channel rename detected: '{firstName}' renamed to '{newName}'");
+		Log.Information("Channel rename detected: '{FirstName}' renamed to '{NewName}'", firstName, newName);
 
 		if (!_renameService.IsAuthorizedToRename(message))
 		{
-			Console.WriteLine($"Unauthorized rename attempt by {message.Author.Username}");
+			Log.Warning("Unauthorized rename attempt by {Username}", message.Author.Username);
 			await message.AddReactionAsync(new Emoji("🔒"));
 			return;
 		}
 
 		if (message.Channel is not SocketTextChannel textChannel)
 		{
-			Console.WriteLine("Cannot rename - not a text channel");
+			Log.Warning("Cannot rename - not a text channel");
 			return;
 		}
 

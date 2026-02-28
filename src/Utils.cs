@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Serilog;
 
 namespace MessengerNicknameSyncer;
 
@@ -17,7 +18,7 @@ public static class Utils
 			}
 			else
 			{
-				Console.WriteLine($"Warning: Invalid ID in {parentSection.Path}:{key}: {child.Value}");
+				Log.Warning("Invalid ID in {Path}:{Key}: {Value}", parentSection.Path, key, child.Value);
 			}
 		}
 

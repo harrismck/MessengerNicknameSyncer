@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using Serilog;
+using System.Text.Json;
 
 public class UserMappingService
 {
@@ -23,17 +24,17 @@ public class UserMappingService
 				{
 					string json = File.ReadAllText(_filePath);
 					mappings = JsonSerializer.Deserialize<UserMappings>(json) ?? new UserMappings();
-					Console.WriteLine($"Loaded {mappings.Mappings.Count} user mapping(s)");
+					Log.Information("Loaded {MappingCount} user mapping(s)", mappings.Mappings.Count);
 				}
 				catch (Exception ex)
 				{
-					Console.WriteLine($"Error loading mappings: {ex.Message}");
+					Log.Error(ex, "Error loading mappings");
 					mappings = new UserMappings();
 				}
 			}
 			else
 			{
-				Console.WriteLine("No mapping file found, creating template...");
+				Log.Warning("No mapping file found, creating template...");
 				mappings = new UserMappings
 				{
 					Mappings = new Dictionary<string, ulong>
@@ -44,8 +45,8 @@ public class UserMappingService
 					}
 				};
 				SaveMappings();
-				Console.WriteLine($"Created template mapping file at: {Path.GetFullPath(_filePath)}");
-				Console.WriteLine("Please edit this file with actual Facebook names and Discord user IDs");
+				Log.Information("Created template mapping file at: {FilePath}", Path.GetFullPath(_filePath));
+				Log.Information("Please edit this file with actual Facebook names and Discord user IDs");
 			}
 		}
 
@@ -82,7 +83,7 @@ public class UserMappingService
 			_mappings.Mappings[facebookName] = discordUserId;
 			SaveMappings();
 
-			Console.WriteLine($"{(isNew ? "Added" : "Updated")} mapping: '{facebookName}' -> {discordUserId}");
+			Log.Information("{Action} mapping: '{FacebookName}' -> {DiscordUserId}", isNew ? "Added" : "Updated", facebookName, discordUserId);
 		}
 	}
 
@@ -94,7 +95,7 @@ public class UserMappingService
 			if (removed)
 			{
 				SaveMappings();
-				Console.WriteLine($"Removed mapping for '{facebookName}'");
+				Log.Information("Removed mapping for '{FacebookName}'", facebookName);
 			}
 			return removed;
 		}

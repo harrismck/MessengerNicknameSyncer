@@ -1,5 +1,6 @@
 ﻿using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 
 public class AuthorizationService
 {
@@ -22,13 +23,13 @@ public class AuthorizationService
 
 	private void LogPermissionSummary()
 	{
-		Console.WriteLine("Authorization configured:");
+		Log.Information("Authorization configured:");
 		foreach ((PermissionAction action, PermissionConfig config) in _permissions)
 		{
 			string status = config.AllowEveryone
 				? "Everyone"
 				: $"{config.AllowedRoleIds.Count} role(s), {config.AllowedUserIds.Count} user(s)";
-			Console.WriteLine($"  {action}: {status}");
+			Log.Information("  {Action}: {Status}", action, status);
 		}
 	}
 

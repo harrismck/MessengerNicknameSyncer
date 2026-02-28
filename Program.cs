@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 using System.Text.RegularExpressions;
 
 internal class Program
@@ -25,8 +26,23 @@ internal class Program
 
 	private static async Task Main(string[] args)
 	{
-		Program program = new();
-		await program.RunBotAsync();
+		Log.Logger = new LoggerConfiguration()
+			.MinimumLevel.Debug()
+			.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+			.WriteTo.File("logs/bot-.log",
+				rollingInterval: RollingInterval.Day,
+				outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+			.CreateLogger();
+
+		try
+		{
+			Program program = new();
+			await program.RunBotAsync();
+		}
+		finally
+		{
+			await Log.CloseAndFlushAsync();
+		}
 	}
 
 	private Program()
@@ -79,7 +95,15 @@ internal class Program
 
 	private Task LogAsync(LogMessage log)
 	{
-		Console.WriteLine(log.ToString());
+		switch (log.Severity)
+		{
+			case LogSeverity.Critical: Log.Fatal(log.Exception, "[Discord] {Message}", log.Message); break;
+			case LogSeverity.Error:    Log.Error(log.Exception, "[Discord] {Message}", log.Message); break;
+			case LogSeverity.Warning:  Log.Warning(log.Exception, "[Discord] {Message}", log.Message); break;
+			case LogSeverity.Info:     Log.Information("[Discord] {Message}", log.Message); break;
+			case LogSeverity.Verbose:  Log.Verbose("[Discord] {Message}", log.Message); break;
+			case LogSeverity.Debug:    Log.Debug("[Discord] {Message}", log.Message); break;
+		}
 		return Task.CompletedTask;
 	}
 
@@ -87,22 +111,22 @@ internal class Program
 	{
 		if (_client == null)
 		{
-			Console.WriteLine("Failed to init client");
+			Log.Error("Failed to init client");
 			return;
 		}
 
-		Console.WriteLine($"Connected as {_client.CurrentUser}");
-		Console.WriteLine($"Monitoring channel ID: {_nicknameSyncChannelId}");
+		Log.Information("Connected as {CurrentUser}", _client.CurrentUser);
+		Log.Information("Monitoring channel ID: {ChannelId}", _nicknameSyncChannelId);
 
 		// Download all members for all guilds
 		foreach (SocketGuild? guild in _client.Guilds)
 		{
-			Console.WriteLine($"Downloading members for guild: {guild.Name}");
+			Log.Information("Downloading members for guild: {GuildName}", guild.Name);
 			await guild.DownloadUsersAsync();
-			Console.WriteLine($"  Total members: {guild.Users.Count}");
+			Log.Information("  Total members: {MemberCount}", guild.Users.Count);
 		}
 
-		Console.WriteLine("Bot is ready!");
+		Log.Information("Bot is ready!");
 	}
 
 	private async Task MessageReceivedAsync(SocketMessage message)
@@ -136,7 +160,7 @@ internal class Program
 		string facebookName = match.Groups[1].Value;
 		string newNickname = match.Groups[2].Value;
 
-		Console.WriteLine($"Nickname change detected: '{facebookName}' -> '{newNickname}'");
+		Log.Information("Nickname change detected: {FacebookName} -> {NewNickname}", facebookName, newNickname);
 
 		if (message.Channel is not SocketGuildChannel guildChannel)
 			return;
@@ -148,8 +172,7 @@ internal class Program
 
 		if (discordUserId == null)
 		{
-			Console.WriteLine($"❌ No mapping found for Facebook name: '{facebookName}'");
-			Console.WriteLine($"   Please add a mapping in user_mappings.json");
+			Log.Warning("No mapping found for Facebook name: {FacebookName}", facebookName);
 			await message.AddReactionAsync(new Emoji("❓"));
 			return;
 		}
@@ -158,7 +181,7 @@ internal class Program
 
 		if (member == null)
 		{
-			Console.WriteLine($"❌ Discord user ID {discordUserId} not found in guild");
+			Log.Warning("Discord user ID {DiscordUserId} not found in guild", discordUserId);
 			await message.AddReactionAsync(new Emoji("❌"));
 			return;
 		}
@@ -166,17 +189,17 @@ internal class Program
 		try
 		{
 			await member.ModifyAsync(x => x.Nickname = newNickname);
-			Console.WriteLine($"✅ Changed {member.Username}'s nickname to '{newNickname}'");
+			Log.Information("Changed {Username}'s nickname to '{NewNickname}'", member.Username, newNickname);
 			await message.AddReactionAsync(new Emoji("✅"));
 		}
 		catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.Forbidden)
 		{
-			Console.WriteLine($"❌ No permission to change {member.Username}'s nickname");
+			Log.Warning("No permission to change {Username}'s nickname", member.Username);
 			await message.AddReactionAsync(new Emoji("⛔"));
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"❌ Error changing nickname: {ex.Message}");
+			Log.Error(ex, "Error changing nickname for {Username}", member.Username);
 			await message.AddReactionAsync(new Emoji("❌"));
 		}
 	}
@@ -199,7 +222,7 @@ internal class Program
 		{
 			if (!_authService.IsAuthorized(message, requiredPermission.Value))
 			{
-				Console.WriteLine($"Unauthorized {requiredPermission.Value} command attempt by {message.Author.Username}");
+				Log.Warning("Unauthorized {Permission} command attempt by {Username}", requiredPermission.Value, message.Author.Username);
 				await message.AddReactionAsync(new Emoji("🔒"));
 				return;
 			}
@@ -238,12 +261,12 @@ internal class Program
 		{
 			_mappingService = new UserMappingService("user_mappings.json");
 			await message.Channel.SendMessageAsync("✅ Mappings reloaded successfully!");
-			Console.WriteLine($"Mappings reloaded by {message.Author.Username}");
+			Log.Information("Mappings reloaded by {Username}", message.Author.Username);
 		}
 		catch (Exception ex)
 		{
 			await message.Channel.SendMessageAsync($"❌ Error reloading mappings: {ex.Message}");
-			Console.WriteLine($"Error reloading mappings: {ex.Message}");
+			Log.Error(ex, "Error reloading mappings");
 		}
 	}
 
@@ -463,7 +486,7 @@ internal class Program
 				{
 					string firstName = ExtractFirstName(facebookName);
 					nicknameChanges[facebookName] = firstName;
-					Console.WriteLine($"No recent change for '{facebookName}', will reset to: {firstName}");
+					Log.Information("No recent change for '{FacebookName}', will reset to: {FirstName}", facebookName, firstName);
 				}
 			}
 
@@ -494,7 +517,7 @@ internal class Program
 		catch (Exception ex)
 		{
 			await message.Channel.SendMessageAsync($"❌ Error during resync: {ex.Message}");
-			Console.WriteLine($"Error during resync: {ex}");
+			Log.Error(ex, "Error during resync");
 		}
 	}
 
@@ -546,7 +569,7 @@ internal class Program
 					if (!nicknameChanges.ContainsKey(facebookName))
 					{
 						nicknameChanges[facebookName] = (newNickname, msg.Timestamp);
-						Console.WriteLine($"Found: '{facebookName}' -> '{newNickname}' from {msg.Timestamp}");
+						Log.Debug("Found: '{FacebookName}' -> '{NewNickname}' from {Timestamp}", facebookName, newNickname, msg.Timestamp);
 					}
 				}
 			}
@@ -559,7 +582,7 @@ internal class Program
 				break;
 		}
 
-		Console.WriteLine($"Processed {messagesProcessed} messages, found {nicknameChanges.Count} unique users");
+		Log.Information("Processed {MessageCount} messages, found {UniqueUsers} unique users", messagesProcessed, nicknameChanges.Count);
 
 		// Return just the nicknames (most recent ones)
 		return nicknameChanges.ToDictionary(
@@ -587,7 +610,7 @@ internal class Program
 
 			if (discordUserId == null)
 			{
-				Console.WriteLine($"⚠️ '{facebookName}' not in mappings, skipping");
+				Log.Warning("'{FacebookName}' not in mappings, skipping", facebookName);
 				results.NotMapped++;
 				continue;
 			}
@@ -596,7 +619,7 @@ internal class Program
 
 			if (member == null)
 			{
-				Console.WriteLine($"⚠️ User ID {discordUserId} not found in guild");
+				Log.Warning("User ID {DiscordUserId} not found in guild", discordUserId);
 				results.Errors++;
 				continue;
 			}
@@ -607,7 +630,7 @@ internal class Program
 				bool isFirstNameReset = newNickname == ExtractFirstName(facebookName);
 
 				await member.ModifyAsync(x => x.Nickname = newNickname);
-				Console.WriteLine($"✅ Synced {member.Username} -> '{newNickname}'");
+				Log.Information("Synced {Username} -> '{NewNickname}'", member.Username, newNickname);
 				results.Success++;
 
 				if (isFirstNameReset)
@@ -620,12 +643,12 @@ internal class Program
 			}
 			catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.Forbidden)
 			{
-				Console.WriteLine($"❌ No permission to change {member.Username}'s nickname");
+				Log.Warning("No permission to change {Username}'s nickname", member.Username);
 				results.Errors++;
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"❌ Error changing {member.Username}'s nickname: {ex.Message}");
+				Log.Error(ex, "Error changing {Username}'s nickname", member.Username);
 				results.Errors++;
 			}
 		}

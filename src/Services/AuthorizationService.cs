@@ -1,6 +1,9 @@
 ﻿using Discord.WebSocket;
+using MessengerNicknameSyncer.Models;
 using Microsoft.Extensions.Configuration;
 using Serilog;
+
+namespace MessengerNicknameSyncer.Services;
 
 public class AuthorizationService
 {
@@ -46,9 +49,8 @@ public class AuthorizationService
 			AllowEveryone = section.GetValue("AllowEveryone", false)
 		};
 	}
-
-
-	public bool IsAuthorized(SocketGuildUser user, PermissionAction action)
+	
+	private bool IsAuthorized(SocketGuildUser user, PermissionAction action)
 	{
 		if (!_permissions.TryGetValue(action, out PermissionConfig? config))
 			return false;
@@ -80,12 +82,5 @@ public class AuthorizationService
 
 		// If it's a DM, only check user ID
 		return config.AllowedUserIds.Contains(message.Author.Id);
-	}
-
-	private class PermissionConfig
-	{
-		public HashSet<ulong> AllowedRoleIds { get; set; } = new();
-		public HashSet<ulong> AllowedUserIds { get; set; } = new();
-		public bool AllowEveryone { get; set; }
 	}
 }

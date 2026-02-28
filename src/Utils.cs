@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 
+namespace MessengerNicknameSyncer;
+
 public static class Utils
 {
 	public static HashSet<ulong> ParseUlongArray(IConfigurationSection parentSection, string key)

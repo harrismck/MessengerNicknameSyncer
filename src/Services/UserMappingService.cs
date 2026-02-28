@@ -1,12 +1,15 @@
 ﻿using Serilog;
 using System.Text.Json;
 
+namespace MessengerNicknameSyncer.Services;
+
 public class UserMappingService
 {
 	private readonly string _filePath;
 	private readonly UserMappings _mappings;
 	private readonly object _lockObj = new();
-
+	private JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+	
 	public UserMappingService(string filePath)
 	{
 		_filePath = filePath;
@@ -57,8 +60,7 @@ public class UserMappingService
 	{
 		lock (_lockObj)
 		{
-			JsonSerializerOptions options = new JsonSerializerOptions { WriteIndented = true };
-			string json = JsonSerializer.Serialize(_mappings, options);
+			string json = JsonSerializer.Serialize(_mappings, _jsonOptions);
 			File.WriteAllText(_filePath, json);
 		}
 	}
@@ -67,12 +69,46 @@ public class UserMappingService
 	{
 		lock (_lockObj)
 		{
+			// Try exact match first
 			if (_mappings.Mappings.TryGetValue(facebookName, out ulong discordUserId))
 			{
 				return discordUserId;
 			}
+            
+			// Fallback: try matching by first name
+			return GetDiscordUserIdByFirstName(facebookName);
+		}
+	}
+
+	private ulong? GetDiscordUserIdByFirstName(string firstName)
+	{
+		// Find all mappings where the key starts with the first name
+		List<KeyValuePair<string, ulong>> matches = _mappings.Mappings
+			.Where(m => 
+				m.Key.StartsWith(firstName + " ", StringComparison.OrdinalIgnoreCase) 
+				|| m.Key.Equals(firstName, StringComparison.OrdinalIgnoreCase))
+			.ToList();
+
+		if (matches.Count == 0)
+		{
 			return null;
 		}
+
+		if (matches.Count == 1)
+		{
+			Console.WriteLine($"ℹ️ Matched '{firstName}' to '{matches[0].Key}' by first name");
+			return matches[0].Value;
+		}
+
+		// Multiple matches - log warning
+		Console.WriteLine($"⚠️ Multiple mappings found for first name '{firstName}':");
+		foreach (KeyValuePair<string, ulong> match in matches)
+		{
+			Console.WriteLine($"   - {match.Key}");
+		}
+		Console.WriteLine($"   Using first match: {matches[0].Key}");
+        
+		return matches[0].Value;
 	}
 
 	public void AddOrUpdateMapping(string facebookName, ulong discordUserId)
@@ -108,10 +144,42 @@ public class UserMappingService
 			return new Dictionary<string, ulong>(_mappings.Mappings);
 		}
 	}
-
-	public void Reload()
+	
+	public string? GetPreferredFacebookName(ulong discordUserId)
 	{
-		LoadOrCreateMappings();
+		lock (_lockObj)
+		{
+			// Find all Facebook names that map to this Discord user
+			List<string> matchingNames = _mappings.Mappings
+				.Where(m => m.Value == discordUserId)
+				.Select(m => m.Key)
+				.ToList();
+
+			if (matchingNames.Count == 0)
+				return null;
+
+			if (matchingNames.Count == 1)
+				return matchingNames[0];
+
+			// Multiple names - prefer the "real" name over special keywords
+			// Special keywords to deprioritize: "your"
+			var specialKeywords = new[] { "your" };
+
+			List<string> realNames = matchingNames
+				.Where(name => !specialKeywords.Contains(name, StringComparer.OrdinalIgnoreCase))
+				.ToList();
+
+			if (realNames.Count > 0)
+			{
+				// Prefer the longest name (likely most complete)
+				string preferredName = realNames.OrderByDescending(n => n.Length).First();
+				Console.WriteLine($"ℹ️ User {discordUserId} has multiple mappings, preferring '{preferredName}' over {string.Join(", ", matchingNames.Where(n => n != preferredName).Select(n => $"'{n}'"))}");
+				return preferredName;
+			}
+
+			// Fallback to first special keyword if that's all we have
+			return matchingNames[0];
+		}
 	}
 }
 

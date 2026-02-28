@@ -1,17 +1,19 @@
-﻿using Discord.WebSocket;
+﻿using System.Text.RegularExpressions;
+using Discord.WebSocket;
+using MessengerNicknameSyncer.Models;
 using Microsoft.Extensions.Configuration;
-using Serilog;
-using System.Text.RegularExpressions;
 
-public class ChannelRenameService
+namespace MessengerNicknameSyncer.Services;
+
+public partial class ChannelRenameService
 {
 	private readonly HashSet<ulong> _autoRenameChannelIds;
 	private readonly bool _enabled;
 	private readonly bool _requireAuthorization;
 	private readonly AuthorizationService? _authService;
 
-	private static readonly Regex _renamePattern =
-		new(@"^(.+?) named the group (.+?)\.$", RegexOptions.Compiled);
+	private static readonly Regex RenamePattern =
+        RenameRegex();
 
 	public ChannelRenameService(
 		IConfiguration configuration,
@@ -19,10 +21,9 @@ public class ChannelRenameService
 	{
 		_authService = authService;
 
-		_enabled = configuration.GetValue<bool>("Discord:AutoRenameChannels:Enabled", false);
-		_requireAuthorization = configuration.GetValue<bool>(
+		_enabled = configuration.GetValue("Discord:AutoRenameChannels:Enabled", false);
+		_requireAuthorization = configuration.GetValue(
 			"Discord:AutoRenameChannels:RequireAuthorization", false);
-
 
 		IConfigurationSection section = configuration.GetSection("Discord:AutoRenameChannels");
 		_autoRenameChannelIds = Utils.ParseUlongArray(
@@ -31,8 +32,8 @@ public class ChannelRenameService
 
 		if (_enabled)
 		{
-			Log.Information("Auto-rename enabled for {ChannelCount} channel(s)", _autoRenameChannelIds.Count);
-			Log.Information("Authorization required: {RequireAuth}", _requireAuthorization);
+			Console.WriteLine($"Auto-rename enabled for {_autoRenameChannelIds.Count} channel(s)");
+			Console.WriteLine($"Authorization required: {_requireAuthorization}");
 		}
 	}
 
@@ -43,9 +44,9 @@ public class ChannelRenameService
 		return _enabled && _autoRenameChannelIds.Contains(channelId);
 	}
 
-	public static (bool IsMatch, string? FirstName, string? NewName) ParseRenameMessage(string content)
+	public (bool IsMatch, string? FirstName, string? NewName) ParseRenameMessage(string content)
 	{
-		Match match = _renamePattern.Match(content);
+		Match match = RenamePattern.Match(content);
 		if (!match.Success)
 			return (false, null, null);
 
@@ -66,7 +67,7 @@ public class ChannelRenameService
 		return _authService.IsAuthorized(message, PermissionAction.ChannelRename);
 	}
 
-	public static async Task<bool> TryRenameChannelAsync(
+	public async Task<bool> TryRenameChannelAsync(
 		SocketTextChannel channel,
 		string newName,
 		string triggeredBy)
@@ -77,17 +78,17 @@ public class ChannelRenameService
 
 			if (channel.Name == sanitizedName)
 			{
-				Log.Information("Channel '{ChannelName}' already has the correct name, skipping", channel.Name);
+				Console.WriteLine($"Channel '{channel.Name}' already has the correct name, skipping");
 				return false;
 			}
 
 			await channel.ModifyAsync(x => x.Name = sanitizedName);
-			Log.Information("Renamed channel to '{SanitizedName}' (triggered by: {TriggeredBy})", sanitizedName, triggeredBy);
+			Console.WriteLine($"✅ Renamed channel to '{sanitizedName}' (triggered by: {triggeredBy})");
 			return true;
 		}
 		catch (Exception ex)
 		{
-			Log.Error(ex, "Error renaming channel");
+			Console.WriteLine($"❌ Error renaming channel: {ex.Message}");
 			return false;
 		}
 	}
@@ -107,4 +108,7 @@ public class ChannelRenameService
 
 		return sanitized;
 	}
+
+    [GeneratedRegex(@"^(.+?) named the group (.+?)\.$", RegexOptions.Compiled)]
+    private static partial Regex RenameRegex();
 }

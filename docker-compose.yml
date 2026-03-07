@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     # Can override values in appsettings.json with environment variables here!
     environment:
+      - TZ=America/Vancouver
       - Discord__BotToken=${DISCORD_BOT_TOKEN}
       #- Discord__NicknameSyncChannelId=${NICKNAME_SYNC_CHANNEL_ID}
       ## Mapping Management Authorization

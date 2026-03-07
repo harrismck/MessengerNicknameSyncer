@@ -87,6 +87,7 @@ internal class Program
 		IConfigurationRoot configuration = new ConfigurationBuilder()
 			.SetBasePath(Directory.GetCurrentDirectory())
 			.AddJsonFile("appsettings.json", optional: false)
+			.AddEnvironmentVariables()
 			.Build();
 
 		string token = configuration["Discord:BotToken"]

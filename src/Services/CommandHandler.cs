@@ -17,6 +17,7 @@ public class CommandHandler
 	private UserMappingService _mappingService;
 	private readonly AuthorizationService _authService;
 	private readonly NicknameSyncService _nicknameSyncService;
+	private readonly FacebookBridgeService _bridgeService;
 	private readonly ulong _nicknameSyncChannelId;
 	private readonly int _resyncMessageCount;
 
@@ -24,12 +25,14 @@ public class CommandHandler
 		UserMappingService mappingService,
 		AuthorizationService authService,
 		NicknameSyncService nicknameSyncService,
+		FacebookBridgeService bridgeService,
 		ulong nicknameSyncChannelId,
 		int resyncMessageCount)
 	{
 		_mappingService = mappingService;
 		_authService = authService;
 		_nicknameSyncService = nicknameSyncService;
+		_bridgeService = bridgeService;
 		_nicknameSyncChannelId = nicknameSyncChannelId;
 		_resyncMessageCount = resyncMessageCount;
 	}
@@ -50,7 +53,21 @@ public class CommandHandler
 		// If this is a known command, check authorization
 		if (requiredPermission.HasValue)
 		{
-			if (!_authService.IsAuthorized(message, requiredPermission.Value))
+			bool authorized;
+			if (_bridgeService.IsBridgeUser(message.Author.Id))
+			{
+				// Resolve the bridge user's real identity from their display name and authorize by user ID.
+				// Role-based checks are not possible for bridge users.
+				string displayName = message.Author.GlobalName ?? message.Author.Username;
+				(ulong effectiveUserId, _) = _bridgeService.Resolve(displayName);
+				authorized = _authService.IsAuthorized(effectiveUserId, requiredPermission.Value);
+			}
+			else
+			{
+				authorized = _authService.IsAuthorized(message, requiredPermission.Value);
+			}
+
+			if (!authorized)
 			{
 				Log.Warning("Unauthorized {Permission} command attempt by {Username}", requiredPermission.Value, message.Author.Username);
 				await message.AddReactionAsync(new Emoji("🔒"));

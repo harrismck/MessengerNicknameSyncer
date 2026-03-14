@@ -15,6 +15,7 @@ internal class Program
 	private readonly NicknameSyncService _nicknameSyncService;
 	private readonly ChannelRenameService _renameService;
 	private readonly CommandHandler _commandHandler;
+	private readonly FacebookBridgeService _bridgeService;
 	private readonly ulong _nicknameSyncChannelId;
 
 	private static async Task Main(string[] _)
@@ -72,12 +73,27 @@ internal class Program
 		var mappingService = new UserMappingService("user_mappings.json");
 		var authService = new AuthorizationService(configuration);
 
+		ulong? bridgeBotId = null;
+		string? bridgeBotIdString = configuration["Discord:FacebookBridge:BridgeBotId"];
+		if (!string.IsNullOrEmpty(bridgeBotIdString))
+		{
+			if (ulong.TryParse(bridgeBotIdString, out ulong parsedId))
+				bridgeBotId = parsedId;
+			else
+				Log.Warning("Invalid FacebookBridge BridgeBotId '{Value}', bridge support disabled", bridgeBotIdString);
+		}
+
+		_bridgeService = new FacebookBridgeService(bridgeBotId, mappingService);
+		if (_bridgeService.IsEnabled)
+			Log.Information("Facebook bridge support enabled for bot ID {BridgeBotId}", bridgeBotId);
+
 		_nicknameSyncService = new NicknameSyncService(mappingService, nicknameClearBehavior);
 		_renameService = new ChannelRenameService(configuration, authService);
 		_commandHandler = new CommandHandler(
 			mappingService,
 			authService,
 			_nicknameSyncService,
+			_bridgeService,
 			_nicknameSyncChannelId,
 			resyncMessageCount);
 	}
@@ -151,6 +167,10 @@ internal class Program
 
 	private async Task MessageReceivedAsync(SocketMessage message)
 	{
+		// Ignore bot messages unless they're from the configured Facebook bridge bot
+		if (message.Author.IsBot && !_bridgeService.IsBridgeUser(message.Author.Id))
+			return;
+
 		// Handle commands (with authorization)
 		if (message.Content.StartsWith('!'))
 		{

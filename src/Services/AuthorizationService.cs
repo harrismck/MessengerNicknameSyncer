@@ -83,4 +83,18 @@ public class AuthorizationService
 		// If it's a DM, only check user ID
 		return config.AllowedUserIds.Contains(message.Author.Id);
 	}
+
+	/// <summary>
+	/// Authorizes by user ID only — used for bridge bot users whose guild roles cannot be resolved.
+	/// </summary>
+	public bool IsAuthorized(ulong userId, PermissionAction action)
+	{
+		if (!_permissions.TryGetValue(action, out PermissionConfig? config))
+			return false;
+
+		if (config.AllowEveryone)
+			return true;
+
+		return config.AllowedUserIds.Contains(userId);
+	}
 }
